@@ -106,13 +106,26 @@ public final class DiskElement: Element {
     }
 
     public func computeTransferMatrixAndLoad() -> (matrix: [[Double]], load: [Double]) {
-        // Placeholder implementation
-        // Full implementation requires transfer matrix integration
-        let size = 8  // 4 displacements × 2 nodes
-        let matrix = Array(repeating: Array(repeating: 0.0, count: size), count: size)
-        let load = Array(repeating: 0.0, count: size)
+        // Integrate transfer matrix using logarithmic spacing
+        let result = TransferMatrixIntegrator.integrate(
+            Hm: { [weak self] z in self?.computeHm(at: z) ?? Matrix.zero(rows: 8, columns: 8) },
+            load: { [weak self] z in self?.computeLoad(at: z) ?? Vector.zero(size: 8) },
+            start: innerRadius,
+            end: outerRadius,
+            hasLoad: hasAppliedLoad()
+        )
 
-        return (matrix: matrix, load: load)
+        // Convert Matrix to [[Double]]
+        var matrixArray: [[Double]] = []
+        for i in 0..<result.transferMatrix.rows {
+            var row: [Double] = []
+            for j in 0..<result.transferMatrix.columns {
+                row.append(result.transferMatrix[i, j])
+            }
+            matrixArray.append(row)
+        }
+
+        return (matrix: matrixArray, load: result.loadVector.flattenedData)
     }
 
     // MARK: - Private Methods
@@ -145,33 +158,99 @@ public final class DiskElement: Element {
         }
     }
 
-    /// Compute ODE matrix Hm at position z
-    /// This is a placeholder - full implementation requires TMB equations
-    private func computeHm(at radius: Double) -> Matrix {
-        let size = 8
-        var hm = Matrix.zero(rows: size, columns: size)
+    /// Compute ODE matrix Hm at position r (radius)
+    /// Implements TMB (Transfer Matrix Bending) equations for disk
+    /// Based on Equations 95-99 from the FEA documentation
+    private func computeHm(at r: Double) -> Matrix {
+        let t = thickness(at: r)
+        let D = youngsModulus * pow(t, 3) / (12.0 * (1.0 - pow(poissonsRatio, 2)))  // Bending stiffness
+        let n = Double(mode)  // Fourier mode number
 
-        // Placeholder - actual implementation needs:
-        // - TMB differential equations for disk bending
-        // - Material stiffness terms
-        // - Geometric terms based on thickness variation
+        // Equation 96: An matrix
+        var An = Matrix.zero(rows: 4, columns: 4)
+        An[3, 0] = poissonsRatio * n * n / (r * r)
+        An[1, 1] = 1.0 / r
+        An[2, 1] = -poissonsRatio * n / r
+        An[1, 2] = n / r
+        An[2, 2] = -poissonsRatio / r
+        An[0, 3] = 1.0
+        An[3, 3] = -poissonsRatio / r
 
-        return hm
+        // Equation 97: Bn matrix
+        var Bn = Matrix.zero(rows: 4, columns: 4)
+        Bn[1, 1] = (1.0 + poissonsRatio) / (Double.pi * youngsModulus * r * t)
+        Bn[2, 2] = (1.0 - pow(poissonsRatio, 2)) / (2.0 * Double.pi * youngsModulus * r * t)
+        Bn[3, 3] = 1.0 / (2.0 * Double.pi * D * r)
+
+        // Equation 98: Cn matrix
+        var Cn = Matrix.zero(rows: 4, columns: 4)
+        Cn[0, 0] = 2.0 * Double.pi * (2.0 - 2.0 * poissonsRatio + n * n - poissonsRatio * poissonsRatio * n * n) * n * n * D / (r * r * r)
+        Cn[3, 0] = 2.0 * Double.pi * (poissonsRatio * poissonsRatio + 2.0 * poissonsRatio - 3.0) * n * n * D / (r * r)
+        Cn[1, 1] = 2.0 * Double.pi * n * n * youngsModulus * t / r
+        Cn[2, 1] = 2.0 * Double.pi * n * youngsModulus * t / r
+        Cn[1, 2] = Cn[2, 1]
+        Cn[2, 2] = 2.0 * Double.pi * youngsModulus * t / r
+        Cn[0, 3] = Cn[3, 0]
+        Cn[3, 3] = 2.0 * Double.pi * (1.0 - poissonsRatio * poissonsRatio + 2.0 * n * n - 2.0 * n * n * poissonsRatio) * D / r
+
+        // Equation 99: Dn matrix
+        var Dn = Matrix.zero(rows: 4, columns: 4)
+        Dn[3, 0] = -1.0
+        Dn[1, 1] = -1.0 / r
+        Dn[2, 1] = -n / r
+        Dn[1, 2] = n * poissonsRatio / r
+        Dn[2, 2] = poissonsRatio / r
+        Dn[0, 3] = -poissonsRatio * n * n / (r * r)
+        Dn[3, 3] = poissonsRatio / r
+
+        // Equation 95: Assemble 8x8 matrix
+        var Hm = Matrix.zero(rows: 8, columns: 8)
+
+        // Top-left: An
+        for i in 0..<4 {
+            for j in 0..<4 {
+                Hm[i, j] = An[i, j]
+            }
+        }
+
+        // Top-right: Bn
+        for i in 0..<4 {
+            for j in 0..<4 {
+                Hm[i, j + 4] = Bn[i, j]
+            }
+        }
+
+        // Bottom-left: Cn
+        for i in 0..<4 {
+            for j in 0..<4 {
+                Hm[i + 4, j] = Cn[i, j]
+            }
+        }
+
+        // Bottom-right: Dn
+        for i in 0..<4 {
+            for j in 0..<4 {
+                Hm[i + 4, j + 4] = Dn[i, j]
+            }
+        }
+
+        return Hm
     }
 
-    /// Compute load vector at position z
-    private func computeLoad(at radius: Double) -> Vector {
+    /// Compute load vector at position r (radius)
+    /// Gravity loading for disk element
+    private func computeLoad(at r: Double) -> Vector {
         var load = Vector.zero(size: 8)
 
         if hasGravity {
-            // Add gravity load contribution
-            // Placeholder - actual calculation depends on mode shape
-            let t = thickness(at: radius)
-            let gravityLoad = gravity * density * t
+            // Gravity force distributed over disk
+            // From C++ implementation: grav[5] and grav[6] for shear and radial directions
+            let t = thickness(at: r)
+            let loadMagnitude = t * 2.0 * r * Double.pi * gravity * density
 
-            // Distribute to appropriate DOFs
-            // This is simplified - actual distribution depends on shape functions
-            load[2] = gravityLoad  // w displacement
+            // Apply to force components (indices 4-7 are forces/moments)
+            load[5] = loadMagnitude  // Shear force
+            load[6] = loadMagnitude  // Radial force
         }
 
         return load
