@@ -114,4 +114,97 @@ final class TransferMatrixTests: XCTestCase {
 
         XCTAssertTrue(hasNonZeroLoad, "Load vector should be non-zero with gravity")
     }
+
+    func testShellElementTransferMatrix() {
+        // Test shell element transfer matrix computation
+        let element = ShellElement(
+            radius: 300.0,
+            thickness: 10.0,
+            axialPositionStart: 0.0,
+            axialPositionEnd: 500.0,
+            youngsModulus: 210000.0,
+            poissonsRatio: 0.3,
+            useNumericalIntegration: false,
+            mode: 1,
+            model: .ventselKrauthammer
+        )
+
+        let (matrix, load) = element.computeTransferMatrixAndLoad()
+
+        // Transfer matrix should be 8x8
+        XCTAssertEqual(matrix.count, 8)
+        XCTAssertEqual(matrix[0].count, 8)
+
+        // Load vector should be size 8
+        XCTAssertEqual(load.count, 8)
+
+        // Transfer matrix should be finite
+        for row in matrix {
+            for value in row {
+                XCTAssertTrue(value.isFinite, "Transfer matrix contains non-finite values")
+            }
+        }
+
+        // Diagonal elements should be non-zero
+        for i in 0..<8 {
+            XCTAssertNotEqual(matrix[i][i], 0.0, accuracy: 0.0001)
+        }
+    }
+
+    func testShaftElementTransferMatrix() {
+        // Test shaft element transfer matrix computation
+        let element = ShaftElement(
+            diameter: 100.0,
+            axialPositionStart: 0.0,
+            axialPositionEnd: 1000.0,
+            youngsModulus: 210000.0,
+            poissonsRatio: 0.3,
+            mode: 1,
+            model: .timoshenko
+        )
+
+        let (matrix, load) = element.computeTransferMatrixAndLoad()
+
+        // Transfer matrix should be 8x8
+        XCTAssertEqual(matrix.count, 8)
+        XCTAssertEqual(matrix[0].count, 8)
+
+        // Load vector should be size 8
+        XCTAssertEqual(load.count, 8)
+
+        // Transfer matrix should be finite
+        for row in matrix {
+            for value in row {
+                XCTAssertTrue(value.isFinite, "Transfer matrix contains non-finite values")
+            }
+        }
+
+        // Diagonal elements should be non-zero
+        for i in 0..<8 {
+            XCTAssertNotEqual(matrix[i][i], 0.0, accuracy: 0.0001)
+        }
+    }
+
+    func testShaftElementEulerBernoulli() {
+        // Test shaft element with Euler-Bernoulli model
+        let element = ShaftElement(
+            diameter: 50.0,
+            axialPositionStart: 0.0,
+            axialPositionEnd: 500.0,
+            youngsModulus: 210000.0,
+            poissonsRatio: 0.3,
+            mode: 0,
+            model: .eulerBernoulli
+        )
+
+        let (matrix, load) = element.computeTransferMatrixAndLoad()
+
+        // Transfer matrix should be finite and valid
+        XCTAssertEqual(matrix.count, 8)
+        for row in matrix {
+            for value in row {
+                XCTAssertTrue(value.isFinite, "Transfer matrix contains non-finite values")
+            }
+        }
+    }
 }

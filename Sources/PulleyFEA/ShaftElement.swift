@@ -81,15 +81,23 @@ public final class ShaftElement: Element {
     }
 
     public func computeTransferMatrixAndLoad() -> (matrix: [[Double]], load: [Double]) {
-        // Placeholder implementation
-        // Full implementation requires:
-        // - Beam theory equations (Euler-Bernoulli or Timoshenko)
-        // - Bar theory for axial and torsional deformation
-        let size = 8  // 4 displacements × 2 nodes
-        let matrix = Array(repeating: Array(repeating: 0.0, count: size), count: size)
-        let load = Array(repeating: 0.0, count: size)
+        // Shaft has constant properties along length
+        // Use constant integration method
+        let H = computeHm(at: axialPositionStart)
+        let T = TransferMatrixIntegrator.integrateConstant(H: H, length: length)
 
-        return (matrix: matrix, load: load)
+        // Convert to array
+        var matrixArray: [[Double]] = []
+        for i in 0..<T.rows {
+            var row: [Double] = []
+            for j in 0..<T.columns {
+                row.append(T[i, j])
+            }
+            matrixArray.append(row)
+        }
+
+        let load = Array(repeating: 0.0, count: 8)
+        return (matrix: matrixArray, load: load)
     }
 
     // MARK: - Shaft-Specific Methods
@@ -195,16 +203,52 @@ public final class ShaftElement: Element {
     // MARK: - Private Methods
 
     /// Compute ODE matrix Hm at position z
+    /// Implements shaft differential equations for beam + bar
     private func computeHm(at z: Double) -> Matrix {
         let size = 8
-        let hm = Matrix.zero(rows: size, columns: size)
+        var Hm = Matrix.zero(rows: size, columns: size)
 
-        // Placeholder - actual implementation needs:
-        // - Differential equations for beam (w, gamma)
-        // - Differential equations for bar (u, beta)
-        // - Coupling based on shaft model type
+        let EI = youngsModulus * momentOfInertia
+        let EA = youngsModulus * area
+        let J = .pi * pow(diameter, 4) / 32.0  // Polar moment
+        let GJ = shearModulus * J
 
-        return hm
+        // State vector: [w, gamma, u, beta, V, M, N, T]
+        // where V=shear, M=moment, N=axial force, T=torque
+
+        switch model {
+        case .eulerBernoulli:
+            // Euler-Bernoulli beam: w'' = gamma, gamma'' = M/EI
+            // Equilibrium: V' = 0, M' = -V
+            Hm[0, 1] = 1.0           // dw/dz = gamma
+            Hm[1, 5] = 1.0 / EI      // dgamma/dz = M/EI
+            Hm[4, 4] = 0.0           // dV/dz = 0 (no distributed load)
+            Hm[5, 4] = -1.0          // dM/dz = -V
+
+        case .timoshenko:
+            // Timoshenko beam: includes shear deformation
+            // w' = gamma - V/(kappa*GA)
+            // gamma' = M/EI
+            // V' = 0, M' = -V
+            let kappa = 0.9  // Shear correction factor
+            let GA = kappa * shearModulus * area
+
+            Hm[0, 1] = 1.0           // dw/dz = gamma - V/(kappa*GA) term
+            Hm[0, 4] = -1.0 / GA     // shear deformation contribution
+            Hm[1, 5] = 1.0 / EI      // dgamma/dz = M/EI
+            Hm[4, 4] = 0.0           // dV/dz = 0
+            Hm[5, 4] = -1.0          // dM/dz = -V
+        }
+
+        // Axial part (bar): u' = N/EA, N' = 0
+        Hm[2, 6] = 1.0 / EA          // du/dz = N/EA
+        Hm[6, 6] = 0.0               // dN/dz = 0
+
+        // Torsion part: beta' = T/GJ, T' = 0
+        Hm[3, 7] = 1.0 / GJ          // dbeta/dz = T/GJ
+        Hm[7, 7] = 0.0               // dT/dz = 0
+
+        return Hm
     }
 
     /// Compute transfer matrix T at position z
