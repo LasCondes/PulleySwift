@@ -26,6 +26,10 @@ let package = Package(
             name: "PulleyBOM",
             targets: ["PulleyBOM"]
         ),
+        .executable(
+            name: "ShaftExample",
+            targets: ["ShaftExample"]
+        ),
     ],
     targets: [
         // Core domain models and data structures
@@ -49,6 +53,13 @@ let package = Package(
         .target(
             name: "PulleyBOM",
             dependencies: ["PulleyCore"]
+        ),
+
+        // Examples
+        .executableTarget(
+            name: "ShaftExample",
+            dependencies: ["PulleyCore", "PulleyFEA"],
+            path: "Examples"
         ),
 
         // Tests

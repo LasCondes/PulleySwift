@@ -100,6 +100,42 @@ public final class ShaftElement: Element {
         return (matrix: matrixArray, load: load)
     }
 
+    // MARK: - Element Protocol
+
+    /// Compute full element stiffness matrix (8x8)
+    /// Combines beam bending, axial, and torsional stiffness
+    public func computeElementStiffness() -> Matrix? {
+        let nDOF = 8  // 4 DOF per node, 2 nodes
+        var K = Matrix.zero(rows: nDOF, columns: nDOF)
+
+        // Beam stiffness (w, gamma) - indices [0,1] and [4,5]
+        let Kbeam = computeBeamStiffness()
+        for i in 0..<4 {
+            for j in 0..<4 {
+                let globalI = i < 2 ? i : i + 2  // Map to [0,1,4,5]
+                let globalJ = j < 2 ? j : j + 2
+                K[globalI, globalJ] = Kbeam[i, j]
+            }
+        }
+
+        // Axial stiffness (u) - indices [2] and [6]
+        let EA = youngsModulus * area
+        let L = length
+        K[2, 2] = EA / L
+        K[2, 6] = -EA / L
+        K[6, 2] = -EA / L
+        K[6, 6] = EA / L
+
+        // Torsional stiffness (beta) - indices [3] and [7]
+        let GJ = computeTorsionalStiffness() * length
+        K[3, 3] = GJ / length
+        K[3, 7] = -GJ / length
+        K[7, 3] = -GJ / length
+        K[7, 7] = GJ / length
+
+        return K
+    }
+
     // MARK: - Shaft-Specific Methods
 
     /// Compute beam stiffness matrix (4x4 for w, gamma at each node)

@@ -115,29 +115,45 @@ public final class FEAssembly {
 
     /// Assemble a single element's contribution
     private func assembleElement(_ element: Element, mode: Int) {
-        // Get element transfer matrix and load vector
-        let (transferMatrix, loadVector) = element.computeTransferMatrixAndLoad()
-
         // Get node indices
         let nodeIndices = element.nodes.flatMap { node in
             (0..<node.numberOfDisplacements).map { node.index(at: $0) }
         }
 
-        // Add element contributions to global matrix and vector
-        for (i, globalI) in nodeIndices.enumerated() {
-            guard globalI >= 0 else { continue }
+        // Check if element provides stiffness matrix directly
+        if let elementK = element.computeElementStiffness() {
+            // Use direct stiffness method
+            for (i, globalI) in nodeIndices.enumerated() {
+                guard globalI >= 0 else { continue }
 
-            // Add to load vector
-            if var extForces = externalForces, i < loadVector.count {
-                extForces[globalI] = extForces[globalI] + loadVector[i]
-                externalForces = extForces
+                for (j, globalJ) in nodeIndices.enumerated() {
+                    guard globalJ >= 0 else { continue }
+                    guard i < elementK.rows && j < elementK.columns else { continue }
+
+                    stiffnessMatrix?.add(value: elementK[i, j], at: globalI, globalJ)
+                }
             }
+        } else {
+            // Use transfer matrix method
+            let (transferMatrix, loadVector) = element.computeTransferMatrixAndLoad()
 
-            // Add to stiffness matrix
-            for (j, globalJ) in nodeIndices.enumerated() {
-                guard globalJ >= 0, i < transferMatrix.count, j < transferMatrix[i].count else { continue }
+            // Add element contributions to global matrix and vector
+            for (i, globalI) in nodeIndices.enumerated() {
+                guard globalI >= 0 else { continue }
 
-                stiffnessMatrix?.add(value: transferMatrix[i][j], at: globalI, globalJ)
+                // Add to load vector
+                if var extForces = externalForces, i < loadVector.count {
+                    extForces[globalI] = extForces[globalI] + loadVector[i]
+                    externalForces = extForces
+                }
+
+                // Add to stiffness matrix (convert transfer matrix to stiffness)
+                for (j, globalJ) in nodeIndices.enumerated() {
+                    guard globalJ >= 0, i < transferMatrix.count, j < transferMatrix[i].count else { continue }
+
+                    // TODO: Proper conversion from transfer matrix to stiffness matrix
+                    stiffnessMatrix?.add(value: transferMatrix[i][j], at: globalI, globalJ)
+                }
             }
         }
     }
@@ -195,24 +211,90 @@ public final class FEAssembly {
         return solution
     }
 
-    /// Impose displacement boundary conditions
-    public func imposeDisplacements(_ displacements: Vector) {
-        // Modify system matrix and RHS to impose displacement constraints
-        // This typically involves:
-        // 1. Setting matrix row to identity
-        // 2. Setting RHS value to prescribed displacement
+    /// Apply point force at a specific DOF
+    public func applyForce(_ force: Double, atDOF dof: Int) {
+        guard var forces = externalForces, dof >= 0, dof < forces.size else {
+            return
+        }
+        forces[dof] = forces[dof] + force
+        externalForces = forces
+        rightHandSide = forces
+    }
 
-        guard systemMatrix != nil,
-              rightHandSide != nil else {
+    /// Apply moment at a specific DOF
+    public func applyMoment(_ moment: Double, atDOF dof: Int) {
+        // Moments are applied the same way as forces
+        applyForce(moment, atDOF: dof)
+    }
+
+    /// Fix a DOF (set displacement to zero)
+    public func fixDOF(_ dof: Int) {
+        guard var matrix = systemMatrix,
+              var rhs = rightHandSide,
+              dof >= 0, dof < numberOfEquations else {
             return
         }
 
-        for _ in 0..<min(displacements.size, numberOfVariables) {
-            // TODO: Implement constraint imposition
-            // - Zero out matrix row except diagonal
-            // - Set diagonal to 1.0
-            // - Set RHS to prescribed value
+        // Zero out the row
+        for j in 0..<numberOfVariables {
+            matrix.set(value: 0.0, at: dof, j)
         }
+
+        // Set diagonal to 1.0
+        matrix.set(value: 1.0, at: dof, dof)
+
+        // Set RHS to 0.0 (prescribed displacement)
+        rhs[dof] = 0.0
+
+        systemMatrix = matrix
+        rightHandSide = rhs
+    }
+
+    /// Fix multiple DOFs
+    public func fixDOFs(_ dofs: [Int]) {
+        for dof in dofs {
+            fixDOF(dof)
+        }
+    }
+
+    /// Prescribe displacement at a DOF
+    public func prescribeDisplacement(_ displacement: Double, atDOF dof: Int) {
+        guard var matrix = systemMatrix,
+              var rhs = rightHandSide,
+              dof >= 0, dof < numberOfEquations else {
+            return
+        }
+
+        // Zero out the row
+        for j in 0..<numberOfVariables {
+            matrix.set(value: 0.0, at: dof, j)
+        }
+
+        // Set diagonal to 1.0
+        matrix.set(value: 1.0, at: dof, dof)
+
+        // Set RHS to prescribed value
+        rhs[dof] = displacement
+
+        systemMatrix = matrix
+        rightHandSide = rhs
+    }
+
+    /// Get displacement at a DOF from solution
+    public func getDisplacement(atDOF dof: Int) -> Double? {
+        guard let sol = solution, dof >= 0, dof < sol.size else {
+            return nil
+        }
+        return sol[dof]
+    }
+
+    /// Get all DOF indices for a node
+    public func getDOFIndices(forNode node: Node) -> [Int] {
+        var indices: [Int] = []
+        for i in 0..<node.numberOfDisplacements {
+            indices.append(node.index(at: i))
+        }
+        return indices
     }
 }
 
@@ -243,6 +325,17 @@ class SparseMatrix {
     /// Get value at position (row, col)
     func get(at row: Int, _ col: Int) -> Double {
         return entries[row]?[col] ?? 0.0
+    }
+
+    /// Set value at position (row, col)
+    func set(value: Double, at row: Int, _ col: Int) {
+        guard row >= 0, row < rows, col >= 0, col < columns else { return }
+
+        if entries[row] == nil {
+            entries[row] = [:]
+        }
+
+        entries[row]?[col] = value
     }
 
     /// Convert to dense matrix
