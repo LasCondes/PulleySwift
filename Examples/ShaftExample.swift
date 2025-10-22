@@ -1,5 +1,5 @@
 import Foundation
-import PulleyFEA
+import AxiSymFEA
 import PulleyCore
 
 /// Example: Simple supported shaft with transverse load
@@ -144,5 +144,10 @@ extension String {
     }
 }
 
-// Run the example
-runShaftExample()
+// Main entry point
+@main
+struct ShaftExampleMain {
+    static func main() {
+        runShaftExample()
+    }
+}

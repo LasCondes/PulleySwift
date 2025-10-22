@@ -15,10 +15,6 @@ let package = Package(
             targets: ["PulleyCore"]
         ),
         .library(
-            name: "PulleyFEA",
-            targets: ["PulleyFEA"]
-        ),
-        .library(
             name: "PulleyStandards",
             targets: ["PulleyStandards"]
         ),
@@ -31,22 +27,22 @@ let package = Package(
             targets: ["ShaftExample"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/LasCondes/AxiSymFEA.git", from: "1.0.0")
+    ],
     targets: [
         // Core domain models and data structures
         .target(
             name: "PulleyCore"
         ),
 
-        // Finite Element Analysis engine
-        .target(
-            name: "PulleyFEA",
-            dependencies: ["PulleyCore"]
-        ),
-
         // Engineering standards (ANSI, DIN15018, AS1403)
         .target(
             name: "PulleyStandards",
-            dependencies: ["PulleyCore", "PulleyFEA"]
+            dependencies: [
+                "PulleyCore",
+                .product(name: "AxiSymFEA", package: "AxiSymFEA")
+            ]
         ),
 
         // Bill of Materials
@@ -58,7 +54,10 @@ let package = Package(
         // Examples
         .executableTarget(
             name: "ShaftExample",
-            dependencies: ["PulleyCore", "PulleyFEA"],
+            dependencies: [
+                "PulleyCore",
+                .product(name: "AxiSymFEA", package: "AxiSymFEA")
+            ],
             path: "Examples"
         ),
 
@@ -66,10 +65,6 @@ let package = Package(
         .testTarget(
             name: "PulleyCoreTests",
             dependencies: ["PulleyCore"]
-        ),
-        .testTarget(
-            name: "PulleyFEATests",
-            dependencies: ["PulleyFEA"]
         ),
         .testTarget(
             name: "PulleyStandardsTests",
