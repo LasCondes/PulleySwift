@@ -142,7 +142,7 @@ public final class FEAssembly {
         }
     }
 
-    /// Solve the assembled system
+    /// Solve the assembled system using LAPACK
     public func solve() -> Bool {
         guard let matrix = systemMatrix,
               let rhs = rightHandSide else {
@@ -150,22 +150,44 @@ public final class FEAssembly {
             return false
         }
 
-        // Convert sparse matrix to dense for now
-        // TODO: Implement sparse solver using Accelerate or external library
-        let _ = matrix.toDense()
-        let rhsData = rhs.flattenedData
+        // Convert sparse matrix to dense
+        let denseMatrix = matrix.toDense()
 
-        // Solve using LAPACK (dense solver)
-        // For now, this is a placeholder
-        solution = Vector(data: rhsData)
+        // LAPACK solves Ax = b where A is the coefficient matrix
+        // Convert to column-major order (LAPACK expects column-major)
+        var AcolMajor = [Double](repeating: 0.0, count: numberOfEquations * numberOfEquations)
+        for i in 0..<numberOfEquations {
+            for j in 0..<numberOfEquations {
+                AcolMajor[j * numberOfEquations + i] = denseMatrix[i, j]
+            }
+        }
 
-        // TODO: Implement actual linear solver
-        // Options:
-        // 1. Use Accelerate's LAPACK for dense systems
-        // 2. Implement/wrap sparse solver
-        // 3. Use iterative methods (CG, GMRES)
+        // Copy RHS (will be overwritten with solution)
+        var b = rhs.flattenedData
 
-        return true
+        // LAPACK parameters (must be var for inout)
+        var n = Int32(numberOfEquations)
+        var nrhs = Int32(1)  // Number of right-hand sides
+        var lda = Int32(numberOfEquations)  // Leading dimension of A
+        var ldb = Int32(numberOfEquations)  // Leading dimension of b
+        var ipiv = [Int32](repeating: 0, count: numberOfEquations)  // Pivot indices
+        var info = Int32(0)
+
+        // Solve using dgesv (general linear system solver)
+        // dgesv computes the solution to A*X = B using LU factorization
+        dgesv_(&n, &nrhs, &AcolMajor, &lda, &ipiv, &b, &ldb, &info)
+
+        if info == 0 {
+            // Success
+            solution = Vector(data: b)
+            return true
+        } else if info < 0 {
+            print("Error: LAPACK dgesv parameter \(-info) had an illegal value")
+            return false
+        } else {
+            print("Error: Matrix is singular, U(\(info),\(info)) is exactly zero")
+            return false
+        }
     }
 
     /// Get solution vector
