@@ -207,4 +207,36 @@ final class TransferMatrixTests: XCTestCase {
             }
         }
     }
+
+    func testShellElementTWKModel() {
+        // Test shell element with TWK model
+        let element = ShellElement(
+            radius: 250.0,
+            thickness: 12.0,
+            axialPositionStart: 0.0,
+            axialPositionEnd: 400.0,
+            youngsModulus: 210000.0,
+            poissonsRatio: 0.3,
+            useNumericalIntegration: false,
+            mode: 2,
+            model: .timoshenkoWoinowskyKrieger
+        )
+
+        let (matrix, load) = element.computeTransferMatrixAndLoad()
+
+        // Transfer matrix should be 8x8 and finite
+        XCTAssertEqual(matrix.count, 8)
+        XCTAssertEqual(matrix[0].count, 8)
+
+        for row in matrix {
+            for value in row {
+                XCTAssertTrue(value.isFinite, "TWK transfer matrix contains non-finite values")
+            }
+        }
+
+        // Diagonal elements should be non-zero
+        for i in 0..<8 {
+            XCTAssertNotEqual(matrix[i][i], 0.0, accuracy: 0.0001)
+        }
+    }
 }

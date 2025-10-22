@@ -200,10 +200,39 @@ public final class ShellElement: Element {
             }
 
         case .timoshenkoWoinowskyKrieger:
-            // TWK model (simplified - uses similar structure)
-            // For now, use Ventsel-Krauthammer as placeholder
-            // Full TWK implementation would have slightly different coefficients
-            return computeHm(at: z)  // Recursive call will use cached VK version
+            // TWK model (Equation C30)
+            // Simpler, sparser formulation than Ventsel-Krauthammer
+
+            let n = Double(mode)
+            let R = radius
+            let t = thickness
+            let nu = poissonsRatio
+            let E = youngsModulus
+
+            // TWK matrix is sparse - only 18 non-zero entries
+            Hm[1, 0] = n / R
+            Hm[0, 1] = -nu * n / R
+
+            Hm[0, 2] = -nu / R
+            Hm[3, 2] = -nu * n * n / (R * R)
+
+            Hm[2, 3] = -1.0
+            Hm[7, 3] = Double.pi * E * t * t * t * n * n / (3.0 * (1.0 + nu) * R)
+            Hm[0, 4] = (1.0 - nu * nu) / (2.0 * Double.pi * E * t * R)
+
+            Hm[1, 5] = (1.0 + nu) / (Double.pi * E * t * R)
+            Hm[4, 5] = -n / R
+            Hm[7, 6] = 1.0
+            Hm[3, 7] = 6.0 * (1.0 - nu * nu) / (Double.pi * E * t * t * t * R)
+
+            Hm[5, 1] = 2.0 * Double.pi * E * t * n * n / R
+            Hm[5, 2] = 2.0 * Double.pi * E * t * n / R
+            Hm[5, 4] = nu * n / R
+
+            Hm[6, 1] = 2.0 * Double.pi * E * t * n / R
+            Hm[6, 2] = 2.0 * Double.pi * E * t / R * (1.0 + t * t * n * n * n * n / (12.0 * R * R))
+            Hm[6, 4] = nu / R
+            Hm[6, 7] = nu * n * n / (R * R)
         }
 
         cachedHm = Hm
