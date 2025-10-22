@@ -19,25 +19,26 @@ Core domain models and data structures:
 - `PulleyType` - Pulley configuration types (live shaft, dead shaft, stub, etc.)
 - Supporting structures: `ShellInput`, `ShaftInput`, `EndDiskAssembly`, etc.
 
-### PulleyFEA
-Finite element analysis engine:
-- `Element` - Base protocol for finite elements
-- `Node` - FEA mesh nodes with displacement tracking
-- Transfer matrix-based 1D element implementations
-- Assembly and solution algorithms
-
 ### PulleyStandards
 Engineering design standards:
 - `Criterium` - Base protocol for design criteria
-- ANSI standard implementation (planned)
-- DIN 15018 standard implementation (planned)
-- AS 1403 standard implementation (planned)
+- `ANSIStandard` - ANSI shaft design with Marin factors
+- `DIN15018Standard` - DIN 15018 crane code for weld fatigue
+- `AS1403Standard` - AS 1403 Australian pulley standard with stress concentration
 
 ### PulleyBOM
 Bill of materials and costing:
 - `MaterialDatabase` - Material lookup and search
 - Plate thickness and cost optimization
 - Component costing calculations
+
+### FEA Engine (External Dependency)
+**[AxiSymFEA](https://github.com/LasCondes/AxiSymFEA)** - Standalone axisymmetric FEA library:
+- Transfer Matrix Method for axisymmetric structures
+- Direct stiffness method for beam elements
+- Three element types: Disk, Shell, Shaft
+- LAPACK solver using Accelerate framework
+- Fourier mode decomposition
 
 ## Requirements
 
@@ -57,33 +58,27 @@ swift build
 swift test
 ```
 
-All tests currently pass (5 tests in PulleyCore module).
+All tests pass (13 tests):
+- PulleyCoreTests: 5 tests
+- PulleyStandardsTests: 8 tests
 
 ## Current Status
-
-**Phase 1: Foundation (In Progress)**
 
 ✅ Completed:
 - Project structure and Swift Package Manager setup
 - Core domain models (Material, Belt, Hub, PulleyInput, etc.)
-- Basic FEA infrastructure (Node, Element protocol)
-- Engineering standards protocol (Criterium)
+- FEA infrastructure extracted to [AxiSymFEA](https://github.com/LasCondes/AxiSymFEA)
+- Engineering standards (ANSI, DIN15018, AS1403)
 - BOM interface definitions
-- Unit tests for core models
+- Unit tests for core models and standards
 - JSON Codable support for all data structures
-
-🚧 In Progress:
-- FEA element implementations (Shell, Disk, Shaft)
-- Matrix operations layer
-- Engineering standards calculations
+- Example shaft FEA model
 
 📋 Planned:
-- Transfer matrix computation
-- Stiffness matrix assembly
-- Linear system solver
-- Complete engineering standards
+- Complete pulley-specific FEA models
 - Web service layer
 - Integration tests
+- Material database implementation
 
 ## Migration from C++
 
