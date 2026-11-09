@@ -6,8 +6,8 @@ import PackageDescription
 let package = Package(
     name: "PulleySwift",
     platforms: [
-        .macOS(.v13),
-        .iOS(.v16)
+        .macOS(.v14),
+        .iOS(.v17)
     ],
     products: [
         .library(
@@ -28,7 +28,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/LasCondes/AxiSymFEA.git", from: "1.0.0")
+        .package(url: "https://github.com/LasCondes/AxiSymFEA.git", from: "3.10.0")
     ],
     targets: [
         // Core domain models and data structures
@@ -69,10 +69,6 @@ let package = Package(
         .testTarget(
             name: "PulleyStandardsTests",
             dependencies: ["PulleyStandards"]
-        ),
-        .testTarget(
-            name: "PulleyBOMTests",
-            dependencies: ["PulleyBOM"]
         ),
     ]
 )
